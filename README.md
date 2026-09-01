@@ -1,6 +1,7 @@
-# E-Waste API — Autenticação
+# E-Waste API
 
-API de autenticação (NestJS + Prisma + PostgreSQL + JWT) para o app E-Waste.
+API da plataforma E-Waste (NestJS + Prisma + PostgreSQL + JWT): autenticação,
+pontos de coleta, descartes, gamificação, impacto ambiental e notificações.
 
 ## Pré-requisitos
 
@@ -30,18 +31,44 @@ npm run start:dev
 
 A API sobe em `http://localhost:3000`.
 
+## Arquitetura
+
+Cada módulo de `src/` segue as mesmas camadas:
+
+```
+Controller (rotas + guards + validação Zod)
+   → Service (regras de negócio)
+      → Repository (classe abstrata)
+         → PrismaXRepository (implementação)
+```
+
+Os *schemas* Zod e os *mappers* de resposta ficam em `dto/`. Os services dependem
+da abstração do repositório, então dá para trocar a implementação (ou usar um fake
+nos testes) sem mexer na regra de negócio.
+
+## Papéis
+
+| Papel | O que faz |
+|-------|-----------|
+| `DESCARTADOR` | Registra descartes, acompanha pontuação e impacto |
+| `MEMBRO_ONG` | Gerencia pontos de coleta e confirma entregas |
+| `ADMIN` | Catálogo de materiais, papéis de usuário e visão geral |
+
 ## Rotas
 
-### Auth
+| Base | Rotas |
+|------|-------|
+| `/auth` | `POST /register`, `POST /login`, `POST /logout`, `GET /me` |
+| `/usuarios` | `GET /me`, `PATCH /me`, `GET /`, `GET /:id`, `PATCH /:id/papel` |
+| `/materiais` | `GET /`, `GET /:id`, `POST /`, `PATCH /:id`, `DELETE /:id` |
+| `/pontos-coleta` | `GET /`, `GET /:id`, `GET /:id/metricas`, `POST /`, `PATCH /:id`, `PUT /:id/materiais`, `DELETE /:id` |
+| `/enderecos` | `GET /`, `POST /`, `PATCH /:id`, `DELETE /:id` |
+| `/entregas` | `POST /`, `GET /`, `GET /pendentes`, `GET /:id`, `PATCH /:id/confirmar`, `PATCH /:id/cancelar` |
+| `/gamificacao` | `GET /me`, `GET /ranking`, `GET /historico` |
+| `/impacto` | `GET /me`, `GET /geral` |
+| `/notificacoes` | `GET /`, `PATCH /lidas`, `PATCH /:id/lida` |
 
-| Método | Rota             | Protegida | Corpo                          |
-|--------|------------------|-----------|--------------------------------|
-| POST   | `/auth/register` | Não       | `{ name, email, password }`    |
-| POST   | `/auth/login`    | Não       | `{ email, password }`          |
-| POST   | `/auth/logout`   | Sim       | — (header Bearer)              |
-| GET    | `/auth/me`       | Sim       | — (header Bearer)              |
-
-`register` e `login` retornam `{ accessToken, user }`.
+Detalhes de payloads, permissões e regras de cálculo: `docs-ewaste/Backend/DOCS.md`.
 
 ## Testando com curl
 
@@ -49,15 +76,29 @@ A API sobe em `http://localhost:3000`.
 # Cadastrar
 curl -X POST http://localhost:3000/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"name":"Pedro","email":"pedro@email.com","password":"123456"}'
+  -d '{"nomeCompleto":"Pedro","email":"pedro@email.com","senha":"123456"}'
 
 # Login
 curl -X POST http://localhost:3000/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"pedro@email.com","password":"123456"}'
+  -d '{"email":"pedro@email.com","senha":"123456"}'
 
 # Dados do usuário logado (troque SEU_TOKEN pelo accessToken retornado)
 curl http://localhost:3000/auth/me \
+  -H "Authorization: Bearer SEU_TOKEN"
+
+# Pontos de coleta mais próximos (Brasília)
+curl "http://localhost:3000/pontos-coleta?latitude=-15.79&longitude=-47.88&raioKm=20" \
+  -H "Authorization: Bearer SEU_TOKEN"
+
+# Registrar um descarte em um ponto de coleta
+curl -X POST http://localhost:3000/entregas \
+  -H "Authorization: Bearer SEU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"tipoEntrega":"PONTO_COLETA","pontoColetaId":"UUID_DO_PONTO","itens":[{"materialId":"UUID_DO_MATERIAL","quantidade":2,"pesoKg":1.5}]}'
+
+# Painel de impacto
+curl "http://localhost:3000/impacto/me?meses=6" \
   -H "Authorization: Bearer SEU_TOKEN"
 
 # Logout

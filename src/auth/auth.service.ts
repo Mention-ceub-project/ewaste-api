@@ -5,74 +5,75 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { User } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
-import { PrismaService } from '../prisma/prisma.service';
-import { RegisterDto, LoginDto } from './dto/auth.schemas';
+import {
+  UsuarioComGamificacao,
+  UsuariosRepository,
+} from '../usuarios/repositories/usuarios.repository';
+import { paraUsuarioDto, UsuarioDto } from '../usuarios/dto/usuario.dto';
+import { RegistrarDto, LoginDto } from './dto/auth.schemas';
 import { JwtPayload } from './strategies/jwt.strategy';
+
+export type RespostaAutenticacao = {
+  accessToken: string;
+  usuario: UsuarioDto;
+};
 
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly usuarios: UsuariosRepository,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
   ) {}
 
-  async register(dto: RegisterDto) {
-    const existing = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
-    
-    if (existing) {
+  async registrar(dto: RegistrarDto): Promise<RespostaAutenticacao> {
+    const jaExiste = await this.usuarios.buscarPorEmail(dto.email);
+    if (jaExiste) {
       throw new ConflictException('Este email já está cadastrado');
     }
 
-    const passwordHash = await bcrypt.hash(dto.password, 10);
-    const user = await this.prisma.user.create({
-      data: {
-        name: dto.name,
-        email: dto.email,
-        passwordHash,
-      },
+    const senhaHash = await bcrypt.hash(dto.senha, 10);
+    const usuario = await this.usuarios.criar({
+      nomeCompleto: dto.nomeCompleto,
+      email: dto.email,
+      senhaHash,
+      telefone: dto.telefone,
+      papel: dto.papel,
     });
 
-    return this.buildAuthResponse(user);
+    return this.montarResposta(usuario);
   }
 
-  async login(dto: LoginDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
-    // Mensagem genérica de propósito: não revela se o email existe
-    if (!user) {
+  async login(dto: LoginDto): Promise<RespostaAutenticacao> {
+    const usuario = await this.usuarios.buscarPorEmail(dto.email);
+    // Mensagem generica de proposito: nao revela se o email existe
+    if (!usuario) {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
-    const passwordMatches = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!passwordMatches) {
+    const senhaConfere = await bcrypt.compare(dto.senha, usuario.senhaHash);
+    if (!senhaConfere) {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
-    return this.buildAuthResponse(user);
+    return this.montarResposta(usuario);
   }
 
   // Incrementa o tokenVersion: todos os tokens emitidos antes deixam de valer
-  async logout(userId: string) {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { tokenVersion: { increment: 1 } },
-    });
+  async logout(usuarioId: string) {
+    await this.usuarios.incrementarTokenVersion(usuarioId);
     return { message: 'Logout realizado com sucesso' };
   }
 
-  // Gera o token e devolve junto com os dados públicos do usuário
-  private async buildAuthResponse(user: User) {
+  private async montarResposta(
+    usuario: UsuarioComGamificacao,
+  ): Promise<RespostaAutenticacao> {
     const payload: JwtPayload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      tokenVersion: user.tokenVersion,
+      sub: usuario.id,
+      email: usuario.email,
+      papel: usuario.papel,
+      tokenVersion: usuario.tokenVersion,
     };
 
     const accessToken = await this.jwt.signAsync(payload, {
@@ -80,16 +81,6 @@ export class AuthService {
       expiresIn: this.config.get<string>('JWT_EXPIRES') ?? '7d',
     });
 
-    return {
-      accessToken,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        points: user.points,
-        level: user.level,
-      },
-    };
+    return { accessToken, usuario: paraUsuarioDto(usuario) };
   }
 }

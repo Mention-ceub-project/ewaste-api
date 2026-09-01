@@ -1,52 +1,48 @@
-import {
-  Body,
-  Controller,
-  Get,
-  HttpCode,
-  Post,
-  UseGuards,
-  UsePipes,
-} from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
+import { UsuariosService } from '../usuarios/usuarios.service';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import {
-  registerSchema,
+  registrarSchema,
   loginSchema,
-  RegisterDto,
+  RegistrarDto,
   LoginDto,
 } from './dto/auth.schemas';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { CurrentUser } from './decorators/current-user.decorator';
+import { CurrentUser, UsuarioAutenticado } from './decorators/current-user.decorator';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly usuariosService: UsuariosService,
+  ) {}
 
   @Post('register')
-  @UsePipes(new ZodValidationPipe(registerSchema))
-  register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
+  registrar(
+    @Body(new ZodValidationPipe(registrarSchema)) dto: RegistrarDto,
+  ) {
+    return this.authService.registrar(dto);
   }
 
   @Post('login')
   @HttpCode(200)
-  @UsePipes(new ZodValidationPipe(loginSchema))
-  login(@Body() dto: LoginDto) {
+  login(@Body(new ZodValidationPipe(loginSchema)) dto: LoginDto) {
     return this.authService.login(dto);
   }
 
-  // Protegida: precisa de um token válido para deslogar aquele usuário
+  // Protegida: precisa de um token valido para deslogar aquele usuario
   @Post('logout')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
-  logout(@CurrentUser() user: { id: string }) {
-    return this.authService.logout(user.id);
+  logout(@CurrentUser() usuario: UsuarioAutenticado) {
+    return this.authService.logout(usuario.id);
   }
 
-  // Útil para o app validar o token e buscar os dados do usuário logado
+  // Util para o app validar o token e buscar os dados do usuario logado
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  me(@CurrentUser() user: unknown) {
-    return user;
+  me(@CurrentUser() usuario: UsuarioAutenticado) {
+    return this.usuariosService.verPerfil(usuario.id);
   }
 }

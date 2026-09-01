@@ -7,26 +7,249 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum UserRole {
+enum PapelUsuario {
   DESCARTADOR
-  ONG_MEMBER
+  MEMBRO_ONG
   ADMIN
+
+  @@map("papel")
 }
 
-model User {
-  id           String   @id @default(uuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  role         UserRole @default(DESCARTADOR)
-  points       Int      @default(0)
-  level        Int      @default(1)
-  avatarUrl    String?
-  // Incrementado a cada logout para invalidar tokens antigos
-  tokenVersion Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+enum TipoEntrega {
+  PONTO_COLETA
+  DOMICILIO
+
+  @@map("tipo_entrega")
+}
+
+enum StatusEntrega {
+  PENDENTE
+  COLETADO
+  CANCELADO
+
+  @@map("status")
+}
+
+model Usuario {
+  id           String       @id @default(uuid()) @db.Uuid
+  nomeCompleto String       @map("nome_completo")
+  email        String       @unique
+  senhaHash    String       @map("senha_hash")
+  telefone     String?
+  papel        PapelUsuario @default(DESCARTADOR)
+  avatarUrl    String?      @map("avatar_url")
+
+  tokenVersion Int          @default(0) @map("token_version")
+
+  dataCriacao     DateTime @default(now()) @map("data_criacao") @db.Timestamptz(6)
+  dataAtualizacao DateTime @updatedAt @map("data_atualizacao") @db.Timestamptz(6)
+
+  gamificacao         GamificacaoUsuario?
+  enderecos           Endereco[]
+  pontosCriados       PontoColeta[]       @relation("PontosCriados")
+  entregas            Entrega[]           @relation("EntregasDoUsuario")
+  entregasConfirmadas Entrega[]           @relation("EntregasConfirmadas")
+  historicoPontos     HistoricoPontos[]
+  notificacoes        Notificacao[]
 
   @@index([email])
-  @@map("users")
+  @@index([papel])
+  @@map("usuarios")
+}
+
+model GamificacaoUsuario {
+  id            String @id @default(uuid()) @db.Uuid
+  usuarioId     String @unique @map("usuario_id") @db.Uuid
+  pontosTotais  Int    @default(0) @map("pontos_totais")
+  nivel         Int    @default(1)
+  totalEntregas Int    @default(0) @map("total_entregas")
+
+  dataAtualizacao DateTime @updatedAt @map("data_atualizacao") @db.Timestamptz(6)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([pontosTotais])
+  @@map("gamificacao_usuarios")
+}
+
+model Material {
+  id        String  @id @default(uuid()) @db.Uuid
+  nome      String  @unique
+  descricao String?
+  icone     String?
+
+  pontosPorKg     Int     @default(0) @map("pontos_por_kg")
+  nivelToxicidade Int     @default(1) @map("nivel_toxicidade")
+  co2PorKg        Decimal @default(0) @map("co2_por_kg") @db.Decimal(10, 3)
+  aguaPorKg       Decimal @default(0) @map("agua_por_kg") @db.Decimal(10, 3)
+  energiaPorKg    Decimal @default(0) @map("energia_por_kg") @db.Decimal(10, 3)
+  ativo           Boolean @default(true)
+
+  dataCriacao DateTime @default(now()) @map("data_criacao") @db.Timestamptz(6)
+
+  pontoMateriais   PontoMaterial[]
+  entregaMateriais EntregaMaterial[]
+
+  @@index([ativo])
+  @@map("materiais")
+}
+
+model PontoColeta {
+  id        String  @id @default(uuid()) @db.Uuid
+  nome      String
+  descricao String?
+
+  responsavel     String?
+  telefoneContato String? @map("telefone_contato")
+  emailContato    String? @map("email_contato")
+
+  rua    String
+  numero String
+  bairro String
+  cidade String
+  estado String
+  cep    String
+
+  latitude  Decimal @db.Decimal(10, 7)
+  longitude Decimal @db.Decimal(10, 7)
+
+  horarioFuncionamento String? @map("horario_funcionamento")
+  ativo                Boolean @default(true)
+
+  criadoPor String  @map("criado_por") @db.Uuid
+  criador   Usuario @relation("PontosCriados", fields: [criadoPor], references: [id])
+
+  dataCriacao     DateTime @default(now()) @map("data_criacao") @db.Timestamptz(6)
+  dataAtualizacao DateTime @updatedAt @map("data_atualizacao") @db.Timestamptz(6)
+
+  materiaisAceitos PontoMaterial[]
+  entregas         Entrega[]
+
+  @@index([criadoPor])
+  @@index([ativo])
+  @@map("pontos_coleta")
+}
+
+model PontoMaterial {
+  id         String @id @default(uuid()) @db.Uuid
+  pontoId    String @map("ponto_id") @db.Uuid
+  materialId String @map("material_id") @db.Uuid
+
+  ponto    PontoColeta @relation(fields: [pontoId], references: [id], onDelete: Cascade)
+  material Material    @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@unique([pontoId, materialId])
+  @@index([materialId])
+  @@map("ponto_materiais")
+}
+
+model Endereco {
+  id        String @id @default(uuid()) @db.Uuid
+  usuarioId String @map("usuario_id") @db.Uuid
+
+  cep         String
+  logradouro  String
+  numero      String
+  complemento String?
+  bairro      String
+  cidade      String
+  estado      String
+
+  latitude  Decimal? @db.Decimal(10, 7)
+  longitude Decimal? @db.Decimal(10, 7)
+
+  dataCriacao DateTime @default(now()) @map("data_criacao") @db.Timestamptz(6)
+
+  usuario  Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  entregas Entrega[]
+
+  @@index([usuarioId])
+  @@map("enderecos")
+}
+
+model Entrega {
+  id        String @id @default(uuid()) @db.Uuid
+  usuarioId String @map("usuario_id") @db.Uuid
+
+  pontoColetaId     String? @map("ponto_coleta_id") @db.Uuid
+  enderecoEntregaId String? @map("endereco_entrega_id") @db.Uuid
+
+  tipoEntrega TipoEntrega   @map("tipo_entrega")
+  status      StatusEntrega @default(PENDENTE)
+
+  observacao String?
+  fotoUrl    String? @map("foto_url")
+
+  pontosGerados      Int     @default(0) @map("pontos_gerados")
+  co2Evitado         Decimal @default(0) @map("co2_evitado") @db.Decimal(12, 3)
+  aguaEconomizada    Decimal @default(0) @map("agua_economizada") @db.Decimal(12, 3)
+  energiaEconomizada Decimal @default(0) @map("energia_economizada") @db.Decimal(12, 3)
+
+  confirmadoPor String?   @map("confirmado_por") @db.Uuid
+  confirmadoEm  DateTime? @map("confirmado_em") @db.Timestamptz(6)
+
+  dataEntrega DateTime? @map("data_entrega") @db.Timestamptz(6)
+  dataCriacao DateTime  @default(now()) @map("data_criacao") @db.Timestamptz(6)
+
+  usuario     Usuario      @relation("EntregasDoUsuario", fields: [usuarioId], references: [id])
+  confirmador Usuario?     @relation("EntregasConfirmadas", fields: [confirmadoPor], references: [id])
+  pontoColeta PontoColeta? @relation(fields: [pontoColetaId], references: [id])
+  endereco    Endereco?    @relation(fields: [enderecoEntregaId], references: [id])
+
+  materiais       EntregaMaterial[]
+  historicoPontos HistoricoPontos[]
+
+  @@index([usuarioId])
+  @@index([pontoColetaId])
+  @@index([status])
+  @@index([dataCriacao])
+  @@map("entregas")
+}
+
+model EntregaMaterial {
+  id         String  @id @default(uuid()) @db.Uuid
+  entregaId  String  @map("entrega_id") @db.Uuid
+  materialId String  @map("material_id") @db.Uuid
+  quantidade Int     @default(1)
+  pesoKg     Decimal @map("peso_kg") @db.Decimal(10, 3)
+
+  entrega  Entrega  @relation(fields: [entregaId], references: [id], onDelete: Cascade)
+  material Material @relation(fields: [materialId], references: [id])
+
+  @@index([entregaId])
+  @@index([materialId])
+  @@map("entrega_materiais")
+}
+
+model HistoricoPontos {
+  id        String  @id @default(uuid()) @db.Uuid
+  usuarioId String  @map("usuario_id") @db.Uuid
+  entregaId String? @map("entrega_id") @db.Uuid
+
+  descricao String
+  pontos    Int
+
+  dataRegistro DateTime @default(now()) @map("data_registro") @db.Timestamptz(6)
+
+  usuario Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  entrega Entrega? @relation(fields: [entregaId], references: [id], onDelete: SetNull)
+
+  @@index([usuarioId])
+  @@index([entregaId])
+  @@map("historico_pontos")
+}
+
+model Notificacao {
+  id        String  @id @default(uuid()) @db.Uuid
+  usuarioId String  @map("usuario_id") @db.Uuid
+  titulo    String
+  mensagem  String
+  lida      Boolean @default(false)
+
+  dataCriacao DateTime @default(now()) @map("data_criacao") @db.Timestamptz(6)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, lida])
+  @@map("notificacoes")
 }
