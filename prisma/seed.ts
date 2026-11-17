@@ -1,9 +1,10 @@
 import { PapelUsuario, PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { z } from 'zod';
 
 /**
- * Popula o banco de desenvolvimento com o catalogo de materiais e alguns
- * pontos de coleta do DF, para o app ter o que mostrar.
+ * Popula o catálogo e, quando configurado, cria o primeiro administrador.
+ * Em desenvolvimento também pode criar os dados de demonstração.
  *
  * Rodar com:  npx ts-node prisma/seed.ts
  *
@@ -131,23 +132,13 @@ const PONTOS = [
 ];
 
 async function main() {
-  // Usuario da ONG dono dos pontos de coleta (PontoColeta.criadoPor e obrigatorio).
-  const senhaHash = await bcrypt.hash('ong123456', 10);
+  const senhaDemo = process.env.SEED_DEMO_ONG_SENHA;
+  if (senhaDemo && process.env.NODE_ENV !== 'development') {
+    throw new Error('SEED_DEMO_ONG_SENHA só pode ser usada em desenvolvimento.');
+  }
+  if (senhaDemo) validarSenha(senhaDemo, 'SEED_DEMO_ONG_SENHA');
 
-  const ong = await prisma.usuario.upsert({
-    where: { email: 'ong@recicladf.org' },
-    update: {},
-    create: {
-      nomeCompleto: 'Equipe Recicla DF',
-      email: 'ong@recicladf.org',
-      senhaHash,
-      papel: PapelUsuario.MEMBRO_ONG,
-      gamificacao: { create: {} },
-    },
-  });
-
-  console.log(`ONG: ${ong.email}`);
-
+  await criarAdmin();
   const materiaisPorNome = new Map<string, string>();
 
   for (const material of MATERIAIS) {
@@ -161,9 +152,26 @@ async function main() {
 
   console.log(`Materiais: ${materiaisPorNome.size}`);
 
+  if (!senhaDemo) return;
+
+  const ong = await prisma.usuario.upsert({
+    where: { email: 'ong@recicladf.org' },
+    update: {},
+    create: {
+      nomeCompleto: 'Equipe Recicla DF',
+      email: 'ong@recicladf.org',
+      senhaHash: await bcrypt.hash(senhaDemo, 10),
+      papel: PapelUsuario.MEMBRO_ONG,
+      gamificacao: { create: {} },
+    },
+  });
+  if (ong.papel !== PapelUsuario.MEMBRO_ONG) {
+    throw new Error('O e-mail da ONG de demonstração já pertence a outro papel.');
+  }
+
   for (const { materiais, ...ponto } of PONTOS) {
     const existente = await prisma.pontoColeta.findFirst({
-      where: { nome: ponto.nome },
+      where: { nome: ponto.nome, criadoPor: ong.id },
     });
 
     const registro = existente
@@ -176,22 +184,63 @@ async function main() {
         });
 
     // Substitui a lista de materiais aceitos pelo ponto.
-    await prisma.pontoMaterial.deleteMany({ where: { pontoId: registro.id } });
-    await prisma.pontoMaterial.createMany({
-      data: materiais
-        .map((nome) => materiaisPorNome.get(nome))
-        .filter((id): id is string => Boolean(id))
-        .map((materialId) => ({ pontoId: registro.id, materialId })),
-    });
+    await prisma.$transaction([
+      prisma.pontoMaterial.deleteMany({ where: { pontoId: registro.id } }),
+      prisma.pontoMaterial.createMany({
+        data: materiais
+          .map((nome) => materiaisPorNome.get(nome))
+          .filter((id): id is string => Boolean(id))
+          .map((materialId) => ({ pontoId: registro.id, materialId })),
+      }),
+    ]);
 
     console.log(`Ponto: ${registro.nome} (${materiais.length} materiais)`);
+  }
+}
+
+async function criarAdmin() {
+  const email = process.env.SEED_ADMIN_EMAIL?.trim();
+  const senha = process.env.SEED_ADMIN_SENHA;
+  if (!email && !senha) return;
+
+  if (!email || !senha) {
+    throw new Error('Defina SEED_ADMIN_EMAIL e SEED_ADMIN_SENHA juntos.');
+  }
+  if (!z.string().email().safeParse(email).success) {
+    throw new Error('SEED_ADMIN_EMAIL precisa ser um e-mail válido.');
+  }
+  validarSenha(senha, 'SEED_ADMIN_SENHA');
+
+  const admin = await prisma.usuario.upsert({
+    where: { email },
+    update: {},
+    create: {
+      nomeCompleto: 'Admin E-Waste',
+      email,
+      senhaHash: await bcrypt.hash(senha, 10),
+      papel: PapelUsuario.ADMIN,
+      gamificacao: { create: {} },
+    },
+    select: { papel: true },
+  });
+  if (admin.papel !== PapelUsuario.ADMIN) {
+    throw new Error('SEED_ADMIN_EMAIL já pertence a uma conta sem papel ADMIN.');
+  }
+  console.log('Conta admin disponível.');
+}
+
+function validarSenha(senha: string, variavel: string) {
+  if (senha.trim().length < 12 || Buffer.byteLength(senha, 'utf8') > 72) {
+    throw new Error(
+      `${variavel} precisa ter ao menos 12 caracteres e no máximo 72 bytes.`,
+    );
   }
 }
 
 main()
   .catch((erro) => {
     console.error(erro);
-    process.exit(1);
+    process.exitCode = 1;
   })
   .finally(async () => {
     await prisma.$disconnect();

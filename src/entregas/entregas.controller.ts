@@ -26,6 +26,8 @@ import {
   CriarEntregaDto,
   listarEntregasSchema,
   ListarEntregasDto,
+  recusarEntregaSchema,
+  RecusarEntregaDto,
 } from './dto/entregas.schemas';
 
 @Controller('entregas')
@@ -85,5 +87,15 @@ export class EntregasController {
     @CurrentUser() usuario: UsuarioAutenticado,
   ) {
     return this.entregasService.cancelar(id, usuario);
+  }
+
+  @Patch(':id/recusar')
+  @Roles(PapelUsuario.MEMBRO_ONG, PapelUsuario.ADMIN)
+  recusar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() usuario: UsuarioAutenticado,
+    @Body(new ZodValidationPipe(recusarEntregaSchema)) dto: RecusarEntregaDto,
+  ) {
+    return this.entregasService.recusar(id, usuario, dto.motivo);
   }
 }

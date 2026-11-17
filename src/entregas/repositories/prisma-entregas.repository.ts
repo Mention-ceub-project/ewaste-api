@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, StatusEntrega } from '@prisma/client';
+import { CriarNotificacaoData } from '../../notificacoes/repositories/notificacoes.repository';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   AtualizarStatusData,
@@ -72,14 +73,34 @@ export class PrismaEntregasRepository implements EntregasRepository {
     return { itens, total };
   }
 
-  async atualizarStatus(
+  async atualizarStatusPendente(
     id: string,
     dados: AtualizarStatusData,
-  ): Promise<EntregaCompleta> {
-    return this.prisma.entrega.update({
-      where: { id },
+    notificacao?: CriarNotificacaoData,
+  ): Promise<EntregaCompleta | null> {
+    // A condição no UPDATE impede que duas operações concluam a mesma entrega.
+    const atualizar = this.prisma.entrega.update({
+      where: { id, status: StatusEntrega.PENDENTE },
       data: dados,
       include: incluirRelacoes,
     });
+
+    try {
+      if (!notificacao) return await atualizar;
+
+      const [entrega] = await this.prisma.$transaction([
+        atualizar,
+        this.prisma.notificacao.create({ data: notificacao }),
+      ]);
+      return entrega;
+    } catch (erro) {
+      if (
+        erro instanceof Prisma.PrismaClientKnownRequestError &&
+        erro.code === 'P2025'
+      ) {
+        return null;
+      }
+      throw erro;
+    }
   }
 }

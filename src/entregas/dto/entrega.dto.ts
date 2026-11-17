@@ -15,6 +15,7 @@ export type EntregaDto = {
   tipoEntrega: TipoEntrega;
   status: StatusEntrega;
   observacao: string | null;
+  motivoRecusa: string | null;
   fotoUrl: string | null;
   pesoTotalKg: number;
   pontosGerados: number;
@@ -64,6 +65,7 @@ export function paraEntregaDto(entrega: EntregaCompleta): EntregaDto {
     tipoEntrega: entrega.tipoEntrega,
     status: entrega.status,
     observacao: entrega.observacao,
+    motivoRecusa: entrega.motivoRecusa,
     fotoUrl: entrega.fotoUrl,
     pesoTotalKg: arredondar(
       itens.reduce((soma, item) => soma + item.pesoKg, 0),

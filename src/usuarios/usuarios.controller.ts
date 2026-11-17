@@ -55,7 +55,7 @@ export class UsuariosController {
   }
 
   @Get(':id')
-  @Roles(PapelUsuario.MEMBRO_ONG, PapelUsuario.ADMIN)
+  @Roles(PapelUsuario.ADMIN)
   buscarPorId(@Param('id', ParseUUIDPipe) id: string) {
     return this.usuariosService.buscarPorId(id);
   }

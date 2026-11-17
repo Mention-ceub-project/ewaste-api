@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum PapelUsuario {
@@ -177,8 +178,9 @@ model Entrega {
   tipoEntrega TipoEntrega   @map("tipo_entrega")
   status      StatusEntrega @default(PENDENTE)
 
-  observacao String?
-  fotoUrl    String? @map("foto_url")
+  observacao   String?
+  fotoUrl      String? @map("foto_url")
+  motivoRecusa String? @map("motivo_recusa")
 
   pontosGerados      Int     @default(0) @map("pontos_gerados")
   co2Evitado         Decimal @default(0) @map("co2_evitado") @db.Decimal(12, 3)

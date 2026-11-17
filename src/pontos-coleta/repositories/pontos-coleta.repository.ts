@@ -59,4 +59,5 @@ export abstract class PontosColetaRepository {
     materiaisIds: string[],
   ): Promise<PontoColetaCompleto>;
   abstract obterMetricas(pontoId: string): Promise<MetricasPonto>;
+  abstract obterMetricasPorCriador(usuarioId: string): Promise<MetricasPonto>;
 }

@@ -52,6 +52,11 @@ export const confirmarEntregaSchema = z.object({
   observacao: z.string().max(500).optional(),
 });
 
+export const recusarEntregaSchema = z.object({
+  motivo: z.string().trim().min(1, 'Informe o motivo da recusa').max(500),
+});
+
 export type CriarEntregaDto = z.infer<typeof criarEntregaSchema>;
 export type ListarEntregasDto = z.infer<typeof listarEntregasSchema>;
 export type ConfirmarEntregaDto = z.infer<typeof confirmarEntregaSchema>;
+export type RecusarEntregaDto = z.infer<typeof recusarEntregaSchema>;

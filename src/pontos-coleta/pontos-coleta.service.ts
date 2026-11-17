@@ -136,6 +136,10 @@ export class PontosColetaService {
     return this.pontos.obterMetricas(id);
   }
 
+  obterMetricasDaOng(usuarioId: string) {
+    return this.pontos.obterMetricasPorCriador(usuarioId);
+  }
+
   // Usado pelas entregas: o ponto precisa estar ativo e aceitar os materiais
   async validarParaEntrega(
     pontoId: string,

@@ -163,19 +163,18 @@ export class EntregasService {
     observacao?: string,
   ): Promise<EntregaDto> {
     const entrega = await this.buscarOuFalhar(id);
-    await this.garantirConfirmacao(entrega, usuario);
+    this.garantirGestao(entrega, usuario, 'confirmar');
 
-    if (entrega.status !== StatusEntrega.PENDENTE) {
-      throw new BadRequestException(
-        'Somente entregas pendentes podem ser confirmadas',
-      );
-    }
-
-    const confirmada = await this.entregas.atualizarStatus(id, {
+    const confirmada = await this.entregas.atualizarStatusPendente(id, {
       status: StatusEntrega.COLETADO,
       confirmadoPor: usuario.id,
       confirmadoEm: new Date(),
     });
+    if (!confirmada) {
+      throw new BadRequestException(
+        'Somente entregas pendentes podem ser confirmadas',
+      );
+    }
 
     // Os pontos so entram no saldo depois que a coleta e confirmada
     await this.gamificacao.creditarPontos({
@@ -195,6 +194,32 @@ export class EntregasService {
     return paraEntregaDto(confirmada);
   }
 
+  async recusar(
+    id: string,
+    usuario: UsuarioAutenticado,
+    motivo: string,
+  ): Promise<EntregaDto> {
+    const entrega = await this.buscarOuFalhar(id);
+    this.garantirGestao(entrega, usuario, 'recusar');
+
+    const recusada = await this.entregas.atualizarStatusPendente(
+      id,
+      { status: StatusEntrega.CANCELADO, motivoRecusa: motivo },
+      {
+        usuarioId: entrega.usuarioId,
+        titulo: 'Entrega recusada',
+        mensagem: `Sua entrega foi recusada. Motivo: ${motivo}`,
+      },
+    );
+    if (!recusada) {
+      throw new BadRequestException(
+        'Somente entregas pendentes podem ser recusadas',
+      );
+    }
+
+    return paraEntregaDto(recusada);
+  }
+
   async cancelar(
     id: string,
     usuario: UsuarioAutenticado,
@@ -206,23 +231,22 @@ export class EntregasService {
       throw new ForbiddenException('Você só pode cancelar as suas entregas');
     }
 
-    if (entrega.status !== StatusEntrega.PENDENTE) {
+    const ponto = entrega.pontoColeta;
+    const cancelada = await this.entregas.atualizarStatusPendente(
+      id,
+      { status: StatusEntrega.CANCELADO },
+      ponto
+        ? {
+            usuarioId: ponto.criadoPor,
+            titulo: 'Entrega cancelada',
+            mensagem: `Uma entrega agendada para o ponto "${ponto.nome}" foi cancelada.`,
+          }
+        : undefined,
+    );
+    if (!cancelada) {
       throw new BadRequestException(
         'Somente entregas pendentes podem ser canceladas',
       );
-    }
-
-    const cancelada = await this.entregas.atualizarStatus(id, {
-      status: StatusEntrega.CANCELADO,
-    });
-
-    // Avisa a ONG que estava esperando a entrega naquele ponto
-    if (cancelada.pontoColeta) {
-      await this.notificacoes.notificar({
-        usuarioId: cancelada.pontoColeta.criadoPor,
-        titulo: 'Entrega cancelada',
-        mensagem: `Uma entrega agendada para o ponto "${cancelada.pontoColeta.nome}" foi cancelada.`,
-      });
     }
 
     return paraEntregaDto(cancelada);
@@ -277,11 +301,12 @@ export class EntregasService {
     );
   }
 
-  // Confirma a coleta: o admin ou a ONG dona do ponto de destino.
+  // Confirmação e recusa cabem ao admin ou à ONG dona do ponto de destino.
   // Entregas em domicilio ficam a cargo do admin enquanto nao ha ONG vinculada.
-  private async garantirConfirmacao(
+  private garantirGestao(
     entrega: EntregaCompleta,
     usuario: UsuarioAutenticado,
+    acao: 'confirmar' | 'recusar',
   ) {
     if (usuario.papel === PapelUsuario.ADMIN) return;
 
@@ -293,7 +318,7 @@ export class EntregasService {
     }
 
     throw new ForbiddenException(
-      'Somente a ONG responsável pelo ponto de coleta pode confirmar esta entrega',
+      `Somente a ONG responsável pelo ponto de coleta pode ${acao} esta entrega`,
     );
   }
 }

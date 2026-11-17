@@ -7,6 +7,7 @@ import {
   StatusEntrega,
   TipoEntrega,
 } from '@prisma/client';
+import { CriarNotificacaoData } from '../../notificacoes/repositories/notificacoes.repository';
 
 export type EntregaCompleta = Entrega & {
   materiais: (EntregaMaterial & { material: Material })[];
@@ -46,6 +47,7 @@ export type AtualizarStatusData = {
   status: StatusEntrega;
   confirmadoPor?: string | null;
   confirmadoEm?: Date | null;
+  motivoRecusa?: string;
 };
 
 export type ListarEntregasFiltros = {
@@ -64,8 +66,9 @@ export abstract class EntregasRepository {
   abstract listar(
     filtros: ListarEntregasFiltros,
   ): Promise<{ itens: EntregaCompleta[]; total: number }>;
-  abstract atualizarStatus(
+  abstract atualizarStatusPendente(
     id: string,
     dados: AtualizarStatusData,
-  ): Promise<EntregaCompleta>;
+    notificacao?: CriarNotificacaoData,
+  ): Promise<EntregaCompleta | null>;
 }
