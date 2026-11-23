@@ -50,9 +50,6 @@ export class PrismaPontosColetaRepository implements PontosColetaRepository {
       estado: filtros.estado
         ? { equals: filtros.estado, mode: 'insensitive' }
         : undefined,
-      materiaisAceitos: filtros.materialId
-        ? { some: { materialId: filtros.materialId } }
-        : undefined,
       ...(filtros.busca
         ? {
             OR: [
@@ -63,6 +60,15 @@ export class PrismaPontosColetaRepository implements PontosColetaRepository {
           }
         : {}),
     };
+
+    if (filtros.materialId) {
+      where.AND = [{
+        OR: [
+          { materiaisAceitos: { some: { materialId: filtros.materialId } } },
+          { materiaisAceitos: { none: {} } },
+        ],
+      }];
+    }
 
     return this.prisma.pontoColeta.findMany({
       where,
@@ -75,9 +81,19 @@ export class PrismaPontosColetaRepository implements PontosColetaRepository {
     id: string,
     dados: AtualizarPontoColetaData,
   ): Promise<PontoColetaCompleto> {
+    const { materiaisIds, ...campos } = dados;
     return this.prisma.pontoColeta.update({
       where: { id },
-      data: dados,
+      data: {
+        ...campos,
+        materiaisAceitos: materiaisIds && {
+          deleteMany: { materialId: { notIn: materiaisIds } },
+          createMany: {
+            data: materiaisIds.map((materialId) => ({ materialId })),
+            skipDuplicates: true,
+          },
+        },
+      },
       include: incluirMateriais,
     });
   }
@@ -86,20 +102,7 @@ export class PrismaPontosColetaRepository implements PontosColetaRepository {
     pontoId: string,
     materiaisIds: string[],
   ): Promise<PontoColetaCompleto> {
-    // Troca atomica: limpa a lista atual e regrava a nova
-    const [, , ponto] = await this.prisma.$transaction([
-      this.prisma.pontoMaterial.deleteMany({ where: { pontoId } }),
-      this.prisma.pontoMaterial.createMany({
-        data: materiaisIds.map((materialId) => ({ pontoId, materialId })),
-        skipDuplicates: true,
-      }),
-      this.prisma.pontoColeta.findUniqueOrThrow({
-        where: { id: pontoId },
-        include: incluirMateriais,
-      }),
-    ]);
-
-    return ponto;
+    return this.atualizar(pontoId, { materiaisIds });
   }
 
   obterMetricas(pontoId: string): Promise<MetricasPonto> {

@@ -24,7 +24,7 @@ export type CriarPontoColetaData = {
 };
 
 export type AtualizarPontoColetaData = Partial<
-  Omit<CriarPontoColetaData, 'criadoPor' | 'materiaisIds'>
+  Omit<CriarPontoColetaData, 'criadoPor'>
 > & { ativo?: boolean };
 
 export type ListarPontosFiltros = {

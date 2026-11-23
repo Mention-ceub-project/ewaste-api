@@ -318,6 +318,37 @@ describe('Cadastros e consultas', () => {
 
       expect(resposta.body.message).toBe('Um ou mais materiais informados não existem');
     });
+
+    it('edita os dados e os materiais do ponto na mesma chamada', async () => {
+      const { body } = await ctx.http()
+        .patch(`/pontos-coleta/${idNovoPonto}`)
+        .set(comToken(tokenOng))
+        .send({
+          horarioFuncionamento: 'Seg a sex, 9h às 17h',
+          materiaisIds: [cenario.materiais.monitor, cenario.materiais.pilhas],
+        })
+        .expect(200);
+
+      expect(body.horarioFuncionamento).toBe('Seg a sex, 9h às 17h');
+      expect(body.materiaisAceitos.map((material: { nome: string }) => material.nome).sort())
+        .toEqual(['Monitor', 'Pilhas']);
+    });
+
+    it('inclui pontos que aceitam todos os materiais nas buscas filtradas', async () => {
+      await ctx.http()
+        .patch(`/pontos-coleta/${idNovoPonto}`)
+        .set(comToken(tokenOng))
+        .send({ materiaisIds: [] })
+        .expect(200);
+
+      const { body } = await ctx.http()
+        .get('/pontos-coleta')
+        .query({ materialId: cenario.materiais.celular, busca: novoPonto.nome })
+        .set(comToken(tokenMaria))
+        .expect(200);
+
+      expect(body).toMatchObject([{ id: idNovoPonto, materiaisAceitos: [] }]);
+    });
   });
 
   describe('CT 026 – Desativação de ponto de coleta', () => {
