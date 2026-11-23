@@ -47,6 +47,26 @@ Em desenvolvimento, preencher `SEED_DEMO_ONG_SENHA` também cria a ONG
 essa conta em produção, revise a conta e rotacione a senha antes de liberar o
 fluxo para ONGs parceiras.
 
+## Testes
+
+Os testes usam o [Vitest](https://vitest.dev) e ficam divididos em duas suítes:
+
+| Comando | O que roda |
+|---------|-----------|
+| `npm test` | Testes unitários (`src/**/*.spec.ts`): regras de negócio com repositórios falsos, sem banco |
+| `npm run test:cov` | Os mesmos, com relatório de cobertura em `coverage/` |
+| `npm run test:e2e` | Testes de integração (`test/*.e2e-spec.ts`): a API completa com requisições HTTP reais |
+| `npm run test:watch` | Testes unitários em modo de observação, rodando a cada alteração |
+
+Os testes de integração precisam do PostgreSQL do `docker compose up -d`. Eles
+usam um banco separado, `ewaste_test`, que é apagado e recriado a cada execução.
+Por segurança, eles se recusam a rodar em qualquer banco que não seja local e
+cujo nome não termine em `_test` — o banco de desenvolvimento e o de produção
+nunca são tocados. Para usar outro banco de teste, defina `TEST_DATABASE_URL`.
+
+Cada teste de integração leva no nome o código do caso de teste correspondente
+(CT 001 a CT 014) do documento de Casos de Teste.
+
 ## Deploy no Render
 
 1. Configure `DATABASE_URL` com a conexão **pooled** do Neon (host com
