@@ -340,4 +340,49 @@ describe('Fluxo de descarte', () => {
       expect(resposta.body.message).toBe('Somente entregas pendentes podem ser canceladas');
     });
   });
+
+  it('reverte a confirmação e o crédito se a notificação não puder ser gravada', async () => {
+    const { body: nova } = await registrar(
+      tokenMaria, cenario.materiais.pilhas, 1, cenario.pontos.reciclaDf,
+    ).expect(201);
+    const saldoAnterior = await pontuacaoDaMaria();
+    const avisosAntes = await notificacoesDe(tokenMaria);
+    const confirmar = () => ctx.http()
+      .patch(`/entregas/${nova.id}/confirmar`)
+      .set(comToken(tokenOng));
+
+    // Bloqueia apenas novas notificações de confirmação no banco isolado de teste.
+    await ctx.prisma.$executeRaw`
+      ALTER TABLE "notificacoes"
+      ADD CONSTRAINT "teste_falha_confirmacao"
+      CHECK ("titulo" <> 'Descarte confirmado') NOT VALID
+    `;
+    try {
+      await confirmar().expect(500);
+      const { body: pendente } = await ctx.http()
+        .get(`/entregas/${nova.id}`)
+        .set(comToken(tokenMaria))
+        .expect(200);
+      expect(pendente).toMatchObject({
+        status: 'PENDENTE',
+        confirmadoPor: null,
+        confirmadoEm: null,
+      });
+      expect(await pontuacaoDaMaria()).toEqual(saldoAnterior);
+      expect(await ctx.prisma.historicoPontos.count({ where: { entregaId: nova.id } })).toBe(0);
+      expect(await notificacoesDe(tokenMaria)).toEqual(avisosAntes);
+    } finally {
+      await ctx.prisma.$executeRaw`
+        ALTER TABLE "notificacoes" DROP CONSTRAINT "teste_falha_confirmacao"
+      `;
+    }
+
+    await confirmar().expect(200);
+    await confirmar().expect(400);
+    expect(await ctx.prisma.historicoPontos.count({ where: { entregaId: nova.id } })).toBe(1);
+    expect(await pontuacaoDaMaria()).toMatchObject({
+      pontosTotais: saldoAnterior.pontosTotais + nova.pontosGerados,
+      totalEntregas: saldoAnterior.totalEntregas + 1,
+    });
+  });
 });

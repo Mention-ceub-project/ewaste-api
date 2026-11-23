@@ -10,7 +10,6 @@ import { MateriaisRepository } from '../materiais/repositories/materiais.reposit
 import { PontosColetaService } from '../pontos-coleta/pontos-coleta.service';
 import { PontosColetaRepository } from '../pontos-coleta/repositories/pontos-coleta.repository';
 import { EnderecosService } from '../enderecos/enderecos.service';
-import { GamificacaoService } from '../gamificacao/gamificacao.service';
 import { NotificacoesService } from '../notificacoes/notificacoes.service';
 import {
   EntregaCompleta,
@@ -28,7 +27,6 @@ export class EntregasService {
     private readonly pontosColeta: PontosColetaService,
     private readonly pontosColetaRepo: PontosColetaRepository,
     private readonly enderecos: EnderecosService,
-    private readonly gamificacao: GamificacaoService,
     private readonly notificacoes: NotificacoesService,
     private readonly calculo: CalculoDescarteService,
   ) {}
@@ -165,31 +163,27 @@ export class EntregasService {
     const entrega = await this.buscarOuFalhar(id);
     this.garantirGestao(entrega, usuario, 'confirmar');
 
-    const confirmada = await this.entregas.atualizarStatusPendente(id, {
-      status: StatusEntrega.COLETADO,
+    const confirmada = await this.entregas.confirmarPendente(id, {
       confirmadoPor: usuario.id,
       confirmadoEm: new Date(),
+      credito: {
+        usuarioId: entrega.usuarioId,
+        pontos: entrega.pontosGerados,
+        descricao: 'Descarte confirmado',
+        entregaId: entrega.id,
+        contarEntrega: true,
+      },
+      notificacao: {
+        usuarioId: entrega.usuarioId,
+        titulo: 'Descarte confirmado',
+        mensagem: `Sua entrega foi confirmada e você ganhou ${entrega.pontosGerados} pontos.${observacao ? ` Observação: ${observacao}` : ''}`,
+      },
     });
     if (!confirmada) {
       throw new BadRequestException(
         'Somente entregas pendentes podem ser confirmadas',
       );
     }
-
-    // Os pontos so entram no saldo depois que a coleta e confirmada
-    await this.gamificacao.creditarPontos({
-      usuarioId: confirmada.usuarioId,
-      pontos: confirmada.pontosGerados,
-      descricao: 'Descarte confirmado',
-      entregaId: confirmada.id,
-      contarEntrega: true,
-    });
-
-    await this.notificacoes.notificar({
-      usuarioId: confirmada.usuarioId,
-      titulo: 'Descarte confirmado',
-      mensagem: `Sua entrega foi confirmada e você ganhou ${confirmada.pontosGerados} pontos.${observacao ? ` Observação: ${observacao}` : ''}`,
-    });
 
     return paraEntregaDto(confirmada);
   }

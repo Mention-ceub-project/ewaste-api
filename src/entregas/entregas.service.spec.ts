@@ -65,14 +65,14 @@ function montar() {
       criar: vi.fn(),
       buscarPorId: vi.fn(),
       listar: vi.fn(),
+      confirmarPendente: vi.fn(),
       atualizarStatusPendente: vi.fn(),
     },
     materiais: { buscarPorIds: vi.fn() },
     pontosColeta: { validarParaEntrega: vi.fn() },
     pontosColetaRepo: { listar: vi.fn() },
     enderecos: { buscarDoUsuarioOuFalhar: vi.fn() },
-    gamificacao: { creditarPontos: vi.fn() },
-    notificacoes: { notificar: vi.fn(), notificarVarios: vi.fn() },
+    notificacoes: { notificarVarios: vi.fn() },
   };
 
   const servico = new EntregasService(
@@ -81,7 +81,6 @@ function montar() {
     deps.pontosColeta as never,
     deps.pontosColetaRepo as never,
     deps.enderecos as never,
-    deps.gamificacao as never,
     deps.notificacoes as never,
     new CalculoDescarteService(),
   );
@@ -102,35 +101,43 @@ describe('EntregasService', () => {
   describe('confirmar', () => {
     it('R1 · o admin confirma uma entrega pendente e os pontos são creditados', async () => {
       ctx.entregas.buscarPorId.mockResolvedValue(entrega());
-      ctx.entregas.atualizarStatusPendente.mockResolvedValue(entrega({ status: StatusEntrega.COLETADO }));
+      ctx.entregas.confirmarPendente.mockResolvedValue(entrega({ status: StatusEntrega.COLETADO }));
 
       const resultado = await ctx.servico.confirmar('entrega-1', ADMIN);
 
       expect(resultado.status).toBe(StatusEntrega.COLETADO);
-      expect(ctx.gamificacao.creditarPontos).toHaveBeenCalledWith({
-        usuarioId: DESCARTADOR.id,
-        pontos: 384,
-        descricao: 'Descarte confirmado',
-        entregaId: 'entrega-1',
-        contarEntrega: true,
-      });
+      expect(ctx.entregas.confirmarPendente).toHaveBeenCalledWith(
+        'entrega-1',
+        expect.objectContaining({
+          confirmadoPor: ADMIN.id,
+          credito: {
+            usuarioId: DESCARTADOR.id,
+            pontos: 384,
+            descricao: 'Descarte confirmado',
+            entregaId: 'entrega-1',
+            contarEntrega: true,
+          },
+        }),
+      );
     });
 
     it('R2 · a ONG dona do ponto confirma, e o descartador é notificado com a observação', async () => {
       ctx.entregas.buscarPorId.mockResolvedValue(entrega());
-      ctx.entregas.atualizarStatusPendente.mockResolvedValue(entrega({ status: StatusEntrega.COLETADO }));
+      ctx.entregas.confirmarPendente.mockResolvedValue(entrega({ status: StatusEntrega.COLETADO }));
 
       await ctx.servico.confirmar('entrega-1', ONG_DONA, 'Recebido no balcão');
 
-      expect(ctx.entregas.atualizarStatusPendente).toHaveBeenCalledWith(
+      expect(ctx.entregas.confirmarPendente).toHaveBeenCalledWith(
         'entrega-1',
-        expect.objectContaining({ status: StatusEntrega.COLETADO, confirmadoPor: ONG_DONA.id }),
+        expect.objectContaining({
+          confirmadoPor: ONG_DONA.id,
+          notificacao: {
+            usuarioId: DESCARTADOR.id,
+            titulo: 'Descarte confirmado',
+            mensagem: 'Sua entrega foi confirmada e você ganhou 384 pontos. Observação: Recebido no balcão',
+          },
+        }),
       );
-      expect(ctx.notificacoes.notificar).toHaveBeenCalledWith({
-        usuarioId: DESCARTADOR.id,
-        titulo: 'Descarte confirmado',
-        mensagem: 'Sua entrega foi confirmada e você ganhou 384 pontos. Observação: Recebido no balcão',
-      });
     });
 
     it('R3 · uma ONG que não é dona do ponto é bloqueada', async () => {
@@ -139,27 +146,24 @@ describe('EntregasService', () => {
       await expect(ctx.servico.confirmar('entrega-1', OUTRA_ONG)).rejects.toThrow(
         new ForbiddenException('Somente a ONG responsável pelo ponto de coleta pode confirmar esta entrega'),
       );
-      expect(ctx.entregas.atualizarStatusPendente).not.toHaveBeenCalled();
-      expect(ctx.gamificacao.creditarPontos).not.toHaveBeenCalled();
+      expect(ctx.entregas.confirmarPendente).not.toHaveBeenCalled();
     });
 
     it('R4 · o descartador não pode confirmar a própria entrega', async () => {
       ctx.entregas.buscarPorId.mockResolvedValue(entrega());
 
       await expect(ctx.servico.confirmar('entrega-1', DESCARTADOR)).rejects.toBeInstanceOf(ForbiddenException);
-      expect(ctx.gamificacao.creditarPontos).not.toHaveBeenCalled();
+      expect(ctx.entregas.confirmarPendente).not.toHaveBeenCalled();
     });
 
     it('R5 · uma entrega que não está pendente não é confirmada nem gera pontos', async () => {
       ctx.entregas.buscarPorId.mockResolvedValue(entrega({ status: StatusEntrega.COLETADO }));
       // A atualização condicional não encontra a entrega como PENDENTE
-      ctx.entregas.atualizarStatusPendente.mockResolvedValue(null);
+      ctx.entregas.confirmarPendente.mockResolvedValue(null);
 
       await expect(ctx.servico.confirmar('entrega-1', ONG_DONA)).rejects.toThrow(
         new BadRequestException('Somente entregas pendentes podem ser confirmadas'),
       );
-      expect(ctx.gamificacao.creditarPontos).not.toHaveBeenCalled();
-      expect(ctx.notificacoes.notificar).not.toHaveBeenCalled();
     });
 
     it('R6 · uma entrega inexistente retorna "não encontrada"', async () => {
@@ -173,7 +177,7 @@ describe('EntregasService', () => {
     it('entregas em domicílio, sem ponto vinculado, só podem ser confirmadas pelo admin', async () => {
       const domicilio = entrega({ pontoColeta: null, pontoColetaId: null, tipoEntrega: TipoEntrega.DOMICILIO });
       ctx.entregas.buscarPorId.mockResolvedValue(domicilio);
-      ctx.entregas.atualizarStatusPendente.mockResolvedValue({ ...domicilio, status: StatusEntrega.COLETADO });
+      ctx.entregas.confirmarPendente.mockResolvedValue({ ...domicilio, status: StatusEntrega.COLETADO });
 
       await expect(ctx.servico.confirmar('entrega-1', ONG_DONA)).rejects.toBeInstanceOf(ForbiddenException);
       await expect(ctx.servico.confirmar('entrega-1', ADMIN)).resolves.toMatchObject({ status: StatusEntrega.COLETADO });
@@ -198,7 +202,7 @@ describe('EntregasService', () => {
         { usuarioId: DESCARTADOR.id, titulo: 'Entrega recusada', mensagem: 'Sua entrega foi recusada. Motivo: Não compareceu' },
       );
       expect(resultado).toMatchObject({ status: StatusEntrega.CANCELADO, motivoRecusa: 'Não compareceu' });
-      expect(ctx.gamificacao.creditarPontos).not.toHaveBeenCalled();
+      expect(ctx.entregas.confirmarPendente).not.toHaveBeenCalled();
     });
 
     it('uma ONG que não é dona do ponto é bloqueada', async () => {

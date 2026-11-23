@@ -66,8 +66,8 @@ describe('GamificacaoService', () => {
 
       const resultado = await servico.creditarPontos(credito);
 
-      expect(repositorio.creditarPontos).toHaveBeenCalledWith(credito);
-      expect(repositorio.atualizarNivel).toHaveBeenCalledWith('u1', 2);
+      expect(repositorio.creditarPontos).toHaveBeenCalledWith(credito, undefined);
+      expect(repositorio.atualizarNivel).toHaveBeenCalledWith('u1', 2, undefined);
       expect(resultado.nivel).toBe(2);
     });
 

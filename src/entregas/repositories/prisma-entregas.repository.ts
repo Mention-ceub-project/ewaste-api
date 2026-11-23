@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, StatusEntrega } from '@prisma/client';
+import { GamificacaoService } from '../../gamificacao/gamificacao.service';
 import { CriarNotificacaoData } from '../../notificacoes/repositories/notificacoes.repository';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   AtualizarStatusData,
+  ConfirmarEntregaData,
   CriarEntregaData,
   EntregaCompleta,
   EntregasRepository,
@@ -21,7 +23,10 @@ const incluirRelacoes = {
 
 @Injectable()
 export class PrismaEntregasRepository implements EntregasRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly gamificacao: GamificacaoService,
+  ) {}
 
   async criar(dados: CriarEntregaData): Promise<EntregaCompleta> {
     const { itens, ...entrega } = dados;
@@ -73,26 +78,52 @@ export class PrismaEntregasRepository implements EntregasRepository {
     return { itens, total };
   }
 
+  async confirmarPendente(
+    id: string,
+    dados: ConfirmarEntregaData,
+  ): Promise<EntregaCompleta | null> {
+    return this.prisma.$transaction(async (transacao) => {
+      const confirmada = await this.atualizarPendente(transacao, id, {
+        status: StatusEntrega.COLETADO,
+        confirmadoPor: dados.confirmadoPor,
+        confirmadoEm: dados.confirmadoEm,
+      });
+      if (!confirmada) return null;
+
+      await this.gamificacao.creditarPontos(dados.credito, transacao);
+      await transacao.notificacao.create({ data: dados.notificacao });
+      return confirmada;
+    });
+  }
+
   async atualizarStatusPendente(
     id: string,
     dados: AtualizarStatusData,
     notificacao?: CriarNotificacaoData,
   ): Promise<EntregaCompleta | null> {
-    // A condição no UPDATE impede que duas operações concluam a mesma entrega.
-    const atualizar = this.prisma.entrega.update({
-      where: { id, status: StatusEntrega.PENDENTE },
-      data: dados,
-      include: incluirRelacoes,
-    });
+    if (!notificacao) return this.atualizarPendente(this.prisma, id, dados);
 
-    try {
-      if (!notificacao) return await atualizar;
+    return this.prisma.$transaction(async (transacao) => {
+      const entrega = await this.atualizarPendente(transacao, id, dados);
+      if (!entrega) return null;
 
-      const [entrega] = await this.prisma.$transaction([
-        atualizar,
-        this.prisma.notificacao.create({ data: notificacao }),
-      ]);
+      await transacao.notificacao.create({ data: notificacao });
       return entrega;
+    });
+  }
+
+  private async atualizarPendente(
+    transacao: Prisma.TransactionClient,
+    id: string,
+    dados: AtualizarStatusData,
+  ): Promise<EntregaCompleta | null> {
+    try {
+      // A condição no UPDATE impede que duas operações concluam a mesma entrega.
+      return await transacao.entrega.update({
+        where: { id, status: StatusEntrega.PENDENTE },
+        data: dados,
+        include: incluirRelacoes,
+      });
     } catch (erro) {
       if (
         erro instanceof Prisma.PrismaClientKnownRequestError &&

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { GamificacaoUsuario } from '@prisma/client';
+import { GamificacaoUsuario, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreditarPontosData,
@@ -18,10 +18,13 @@ export class PrismaGamificacaoRepository implements GamificacaoRepository {
     return this.prisma.gamificacaoUsuario.findUnique({ where: { usuarioId } });
   }
 
-  async creditarPontos(dados: CreditarPontosData): Promise<GamificacaoUsuario> {
-    const [gamificacao] = await this.prisma.$transaction([
+  async creditarPontos(
+    dados: CreditarPontosData,
+    transacao?: Prisma.TransactionClient,
+  ): Promise<GamificacaoUsuario> {
+    const gravarCredito = async (cliente: Prisma.TransactionClient) => {
       // upsert cobre usuarios criados antes da gamificacao existir
-      this.prisma.gamificacaoUsuario.upsert({
+      const gamificacao = await cliente.gamificacaoUsuario.upsert({
         where: { usuarioId: dados.usuarioId },
         create: {
           usuarioId: dados.usuarioId,
@@ -32,25 +35,29 @@ export class PrismaGamificacaoRepository implements GamificacaoRepository {
           pontosTotais: { increment: dados.pontos },
           totalEntregas: { increment: dados.contarEntrega ? 1 : 0 },
         },
-      }),
-      this.prisma.historicoPontos.create({
+      });
+      await cliente.historicoPontos.create({
         data: {
           usuarioId: dados.usuarioId,
           entregaId: dados.entregaId ?? null,
           descricao: dados.descricao,
           pontos: dados.pontos,
         },
-      }),
-    ]);
+      });
+      return gamificacao;
+    };
 
-    return gamificacao;
+    return transacao
+      ? gravarCredito(transacao)
+      : this.prisma.$transaction(gravarCredito);
   }
 
   async atualizarNivel(
     usuarioId: string,
     nivel: number,
+    transacao: Prisma.TransactionClient = this.prisma,
   ): Promise<GamificacaoUsuario> {
-    return this.prisma.gamificacaoUsuario.update({
+    return transacao.gamificacaoUsuario.update({
       where: { usuarioId },
       data: { nivel },
     });
