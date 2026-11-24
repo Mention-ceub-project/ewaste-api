@@ -189,6 +189,7 @@ model Entrega {
 
   confirmadoPor String?   @map("confirmado_por") @db.Uuid
   confirmadoEm  DateTime? @map("confirmado_em") @db.Timestamptz(6)
+  observacaoConfirmacao String? @map("observacao_confirmacao")
 
   dataEntrega DateTime? @map("data_entrega") @db.Timestamptz(6)
   dataCriacao DateTime  @default(now()) @map("data_criacao") @db.Timestamptz(6)
@@ -200,6 +201,7 @@ model Entrega {
 
   materiais       EntregaMaterial[]
   historicoPontos HistoricoPontos[]
+  notificacoes     Notificacao[]
 
   @@index([usuarioId])
   @@index([pontoColetaId])
@@ -244,6 +246,7 @@ model HistoricoPontos {
 model Notificacao {
   id        String  @id @default(uuid()) @db.Uuid
   usuarioId String  @map("usuario_id") @db.Uuid
+  entregaId String? @map("entrega_id") @db.Uuid
   titulo    String
   mensagem  String
   lida      Boolean @default(false)
@@ -251,7 +254,9 @@ model Notificacao {
   dataCriacao DateTime @default(now()) @map("data_criacao") @db.Timestamptz(6)
 
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  entrega Entrega? @relation(fields: [entregaId], references: [id], onDelete: SetNull)
 
   @@index([usuarioId, lida])
+  @@index([entregaId])
   @@map("notificacoes")
 }

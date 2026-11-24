@@ -26,6 +26,8 @@ import {
   CriarEntregaDto,
   listarEntregasSchema,
   ListarEntregasDto,
+  listarFilaEntregasSchema,
+  ListarFilaEntregasDto,
   recusarEntregaSchema,
   RecusarEntregaDto,
 } from './dto/entregas.schemas';
@@ -57,7 +59,7 @@ export class EntregasController {
   @Roles(PapelUsuario.MEMBRO_ONG, PapelUsuario.ADMIN)
   listarPendentes(
     @CurrentUser() usuario: UsuarioAutenticado,
-    @Query(new ZodValidationPipe(listarEntregasSchema)) dto: ListarEntregasDto,
+    @Query(new ZodValidationPipe(listarFilaEntregasSchema)) dto: ListarFilaEntregasDto,
   ) {
     return this.entregasService.listarPendentesDaOng(usuario, dto);
   }

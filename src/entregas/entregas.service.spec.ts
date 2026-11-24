@@ -36,6 +36,8 @@ function entrega(dados: Partial<EntregaCompleta> = {}): EntregaCompleta {
     energiaEconomizada: new Prisma.Decimal(4.8),
     confirmadoPor: null,
     confirmadoEm: null,
+    observacaoConfirmacao: null,
+    confirmador: null,
     dataEntrega: null,
     dataCriacao: new Date(),
     materiais: [],
@@ -131,8 +133,10 @@ describe('EntregasService', () => {
         'entrega-1',
         expect.objectContaining({
           confirmadoPor: ONG_DONA.id,
+          observacaoConfirmacao: 'Recebido no balcão',
           notificacao: {
             usuarioId: DESCARTADOR.id,
+            entregaId: 'entrega-1',
             titulo: 'Descarte confirmado',
             mensagem: 'Sua entrega foi confirmada e você ganhou 384 pontos. Observação: Recebido no balcão',
           },
@@ -199,7 +203,7 @@ describe('EntregasService', () => {
       expect(ctx.entregas.atualizarStatusPendente).toHaveBeenCalledWith(
         'entrega-1',
         { status: StatusEntrega.CANCELADO, motivoRecusa: 'Não compareceu' },
-        { usuarioId: DESCARTADOR.id, titulo: 'Entrega recusada', mensagem: 'Sua entrega foi recusada. Motivo: Não compareceu' },
+        { usuarioId: DESCARTADOR.id, entregaId: 'entrega-1', titulo: 'Entrega recusada', mensagem: 'Sua entrega foi recusada. Motivo: Não compareceu' },
       );
       expect(resultado).toMatchObject({ status: StatusEntrega.CANCELADO, motivoRecusa: 'Não compareceu' });
       expect(ctx.entregas.confirmarPendente).not.toHaveBeenCalled();
@@ -239,6 +243,7 @@ describe('EntregasService', () => {
         {
           usuarioId: ONG_DONA.id,
           titulo: 'Entrega cancelada',
+          entregaId: 'entrega-1',
           mensagem: 'Uma entrega agendada para o ponto "ONG Recicla DF" foi cancelada.',
         },
       );

@@ -47,6 +47,8 @@ export type EntregaDto = {
   } | null;
   confirmadoPor: string | null;
   confirmadoEm: Date | null;
+  confirmadoPorNome?: string | null;
+  observacaoConfirmacao?: string | null;
   dataEntrega: Date | null;
   dataCriacao: Date;
 };
@@ -100,5 +102,13 @@ export function paraEntregaDto(entrega: EntregaCompleta): EntregaDto {
     confirmadoEm: entrega.confirmadoEm,
     dataEntrega: entrega.dataEntrega,
     dataCriacao: entrega.dataCriacao,
+  };
+}
+
+export function paraRecebimentoDto(entrega: EntregaCompleta): EntregaDto {
+  return {
+    ...paraEntregaDto(entrega),
+    confirmadoPorNome: entrega.confirmador?.nomeCompleto ?? null,
+    observacaoConfirmacao: entrega.observacaoConfirmacao,
   };
 }

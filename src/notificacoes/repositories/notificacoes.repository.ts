@@ -2,6 +2,7 @@ import { Notificacao } from '@prisma/client';
 
 export type CriarNotificacaoData = {
   usuarioId: string;
+  entregaId?: string | null;
   titulo: string;
   mensagem: string;
 };

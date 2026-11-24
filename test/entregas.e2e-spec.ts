@@ -77,7 +77,10 @@ describe('Fluxo de descarte', () => {
 
     it('o descartador e a ONG do ponto são avisados', async () => {
       expect(await notificacoesDe(tokenMaria)).toContainEqual(expect.objectContaining({ titulo: 'Descarte registrado' }));
-      expect(await notificacoesDe(tokenOng)).toContainEqual(expect.objectContaining({ titulo: 'Nova entrega pendente' }));
+      expect(await notificacoesDe(tokenOng)).toContainEqual(expect.objectContaining({
+        titulo: 'Nova entrega pendente',
+        entregaId,
+      }));
     });
   });
 
@@ -160,6 +163,21 @@ describe('Fluxo de descarte', () => {
       expect(resposta.body.status).toBe('COLETADO');
       expect(resposta.body.confirmadoPor).toBe(cenario.usuarios.ong.id);
       expect(resposta.body.confirmadoEm).not.toBeNull();
+      expect(resposta.body).toMatchObject({
+        confirmadoPorNome: cenario.usuarios.ong.nomeCompleto,
+        observacaoConfirmacao: 'Recebido no balcão',
+      });
+    });
+
+    it('a ONG pode reabrir a entrega e consultar o registro de confirmação', async () => {
+      const { body } = await ctx.http().get(`/entregas/${entregaId}`).set(comToken(tokenOng)).expect(200);
+      expect(body).toMatchObject({
+        confirmadoPorNome: cenario.usuarios.ong.nomeCompleto,
+        observacaoConfirmacao: 'Recebido no balcão',
+      });
+
+      const visaoDoDescartador = await ctx.http().get(`/entregas/${entregaId}`).set(comToken(tokenMaria)).expect(200);
+      expect(visaoDoDescartador.body).not.toHaveProperty('confirmadoPorNome');
     });
 
     it('os pontos são creditados e o descartador sobe para o nível 2', async () => {
@@ -383,6 +401,56 @@ describe('Fluxo de descarte', () => {
     expect(await pontuacaoDaMaria()).toMatchObject({
       pontosTotais: saldoAnterior.pontosTotais + nova.pontosGerados,
       totalEntregas: saldoAnterior.totalEntregas + 1,
+    });
+  });
+
+  describe('Filtros da fila da ONG', () => {
+    const intervalo = {
+      dataInicial: '2026-09-15T03:00:00.000Z',
+      dataFinal: '2026-09-16T02:59:59.999Z',
+    };
+    let entregaNoIntervalo: string;
+
+    beforeAll(async () => {
+      const material = cenario.materiais.pilhas;
+      const fixtures = [
+        { ponto: cenario.pontos.reciclaDf, data: intervalo.dataInicial },
+        { ponto: cenario.pontos.reciclaDf, data: '2026-09-15T02:59:59.999Z' },
+        { ponto: cenario.pontos.taguatinga, data: intervalo.dataFinal },
+      ];
+      for (const [indice, { ponto, data }] of fixtures.entries()) {
+        const { body } = await registrar(tokenMaria, material, 1, ponto).expect(201);
+        await ctx.prisma.entrega.update({
+          where: { id: body.id },
+          data: { dataCriacao: new Date(data) },
+        });
+        if (indice === 0) entregaNoIntervalo = body.id;
+      }
+    });
+
+    it('combina ponto e data de registro e conta somente os resultados filtrados', async () => {
+      const { body } = await ctx.http().get('/entregas/pendentes')
+        .set(comToken(tokenOng))
+        .query({ pontoColetaId: cenario.pontos.reciclaDf, ...intervalo })
+        .expect(200);
+
+      expect(body.total).toBe(1);
+      expect(body.itens).toMatchObject([{ id: entregaNoIntervalo, pontoColeta: { id: cenario.pontos.reciclaDf } }]);
+    });
+
+    it('mantém a fila vazia quando outra ONG filtra pelo ponto', async () => {
+      const { body } = await ctx.http().get('/entregas/pendentes')
+        .set(comToken(tokenOutraOng))
+        .query({ pontoColetaId: cenario.pontos.reciclaDf, ...intervalo })
+        .expect(200);
+      expect(body).toMatchObject({ total: 0, itens: [] });
+    });
+
+    it('rejeita o intervalo com data inicial posterior à final', async () => {
+      await ctx.http().get('/entregas/pendentes')
+        .set(comToken(tokenOng))
+        .query({ dataInicial: intervalo.dataFinal, dataFinal: intervalo.dataInicial })
+        .expect(400);
     });
   });
 });

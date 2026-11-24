@@ -16,6 +16,7 @@ const incluirRelacoes = {
   materiais: { include: { material: true } },
   pontoColeta: true,
   endereco: true,
+  confirmador: { select: { nomeCompleto: true } },
   usuario: {
     select: { id: true, nomeCompleto: true, email: true, telefone: true },
   },
@@ -62,6 +63,9 @@ export class PrismaEntregasRepository implements EntregasRepository {
       pontoColetaId: filtros.pontosColetaIds
         ? { in: filtros.pontosColetaIds }
         : undefined,
+      dataCriacao: filtros.dataInicial || filtros.dataFinal
+        ? { gte: filtros.dataInicial, lte: filtros.dataFinal }
+        : undefined,
     };
 
     const [itens, total] = await this.prisma.$transaction([
@@ -87,6 +91,7 @@ export class PrismaEntregasRepository implements EntregasRepository {
         status: StatusEntrega.COLETADO,
         confirmadoPor: dados.confirmadoPor,
         confirmadoEm: dados.confirmadoEm,
+        observacaoConfirmacao: dados.observacaoConfirmacao,
       });
       if (!confirmada) return null;
 

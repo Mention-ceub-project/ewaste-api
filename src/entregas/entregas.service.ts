@@ -14,10 +14,11 @@ import { NotificacoesService } from '../notificacoes/notificacoes.service';
 import {
   EntregaCompleta,
   EntregasRepository,
+  ListarEntregasFiltros,
 } from './repositories/entregas.repository';
 import { CalculoDescarteService } from './services/calculo-descarte.service';
-import { EntregaDto, paraEntregaDto } from './dto/entrega.dto';
-import { CriarEntregaDto, ListarEntregasDto } from './dto/entregas.schemas';
+import { EntregaDto, paraEntregaDto, paraRecebimentoDto } from './dto/entrega.dto';
+import { CriarEntregaDto, ListarEntregasDto, ListarFilaEntregasDto } from './dto/entregas.schemas';
 
 @Injectable()
 export class EntregasService {
@@ -110,13 +111,16 @@ export class EntregasService {
   // Fila da ONG: entregas pendentes destinadas aos pontos que ela mantem
   async listarPendentesDaOng(
     usuario: UsuarioAutenticado,
-    dto: ListarEntregasDto,
+    dto: ListarFilaEntregasDto,
   ) {
-    const filtros = {
+    const filtros: ListarEntregasFiltros = {
       status: dto.status ?? StatusEntrega.PENDENTE,
       tipoEntrega: dto.tipoEntrega,
       pagina: dto.pagina,
       porPagina: dto.porPagina,
+      pontosColetaIds: dto.pontoColetaId ? [dto.pontoColetaId] : undefined,
+      dataInicial: dto.dataInicial,
+      dataFinal: dto.dataFinal,
     };
 
     // O admin enxerga a fila inteira; a ONG so os proprios pontos
@@ -125,13 +129,15 @@ export class EntregasService {
         criadoPor: usuario.id,
       });
 
-      if (meusPontos.length === 0) {
+      const pontosPermitidos = meusPontos
+        .filter((ponto) => !dto.pontoColetaId || ponto.id === dto.pontoColetaId)
+        .map((ponto) => ponto.id);
+
+      if (pontosPermitidos.length === 0) {
         return { itens: [], total: 0, pagina: dto.pagina, porPagina: dto.porPagina };
       }
 
-      Object.assign(filtros, {
-        pontosColetaIds: meusPontos.map((ponto) => ponto.id),
-      });
+      filtros.pontosColetaIds = pontosPermitidos;
     }
 
     const { itens, total } = await this.entregas.listar(filtros);
@@ -151,7 +157,9 @@ export class EntregasService {
     const entrega = await this.buscarOuFalhar(id);
     await this.garantirVisualizacao(entrega, usuario);
 
-    return paraEntregaDto(entrega);
+    return this.podeGerenciar(entrega, usuario)
+      ? paraRecebimentoDto(entrega)
+      : paraEntregaDto(entrega);
   }
 
   // Confirmar recebimento: muda o status, credita os pontos e avisa o usuario
@@ -162,10 +170,12 @@ export class EntregasService {
   ): Promise<EntregaDto> {
     const entrega = await this.buscarOuFalhar(id);
     this.garantirGestao(entrega, usuario, 'confirmar');
+    const nota = observacao?.trim() || null;
 
     const confirmada = await this.entregas.confirmarPendente(id, {
       confirmadoPor: usuario.id,
       confirmadoEm: new Date(),
+      observacaoConfirmacao: nota,
       credito: {
         usuarioId: entrega.usuarioId,
         pontos: entrega.pontosGerados,
@@ -175,8 +185,9 @@ export class EntregasService {
       },
       notificacao: {
         usuarioId: entrega.usuarioId,
+        entregaId: entrega.id,
         titulo: 'Descarte confirmado',
-        mensagem: `Sua entrega foi confirmada e você ganhou ${entrega.pontosGerados} pontos.${observacao ? ` Observação: ${observacao}` : ''}`,
+        mensagem: `Sua entrega foi confirmada e você ganhou ${entrega.pontosGerados} pontos.${nota ? ` Observação: ${nota}` : ''}`,
       },
     });
     if (!confirmada) {
@@ -185,7 +196,7 @@ export class EntregasService {
       );
     }
 
-    return paraEntregaDto(confirmada);
+    return paraRecebimentoDto(confirmada);
   }
 
   async recusar(
@@ -201,6 +212,7 @@ export class EntregasService {
       { status: StatusEntrega.CANCELADO, motivoRecusa: motivo },
       {
         usuarioId: entrega.usuarioId,
+        entregaId: entrega.id,
         titulo: 'Entrega recusada',
         mensagem: `Sua entrega foi recusada. Motivo: ${motivo}`,
       },
@@ -232,6 +244,7 @@ export class EntregasService {
       ponto
         ? {
             usuarioId: ponto.criadoPor,
+            entregaId: entrega.id,
             titulo: 'Entrega cancelada',
             mensagem: `Uma entrega agendada para o ponto "${ponto.nome}" foi cancelada.`,
           }
@@ -253,6 +266,7 @@ export class EntregasService {
     const avisos = [
       {
         usuarioId: entrega.usuarioId,
+        entregaId: entrega.id,
         titulo: 'Descarte registrado',
         mensagem: `Seu descarte de ${pesoTotalKg} kg foi registrado e vale ${entrega.pontosGerados} pontos após a confirmação da coleta.`,
       },
@@ -261,6 +275,7 @@ export class EntregasService {
     if (entrega.pontoColeta) {
       avisos.push({
         usuarioId: entrega.pontoColeta.criadoPor,
+        entregaId: entrega.id,
         titulo: 'Nova entrega pendente',
         mensagem: `${entrega.usuario.nomeCompleto} registrou uma entrega para o ponto "${entrega.pontoColeta.nome}".`,
       });
@@ -302,17 +317,15 @@ export class EntregasService {
     usuario: UsuarioAutenticado,
     acao: 'confirmar' | 'recusar',
   ) {
-    if (usuario.papel === PapelUsuario.ADMIN) return;
-
-    if (
-      usuario.papel === PapelUsuario.MEMBRO_ONG &&
-      entrega.pontoColeta?.criadoPor === usuario.id
-    ) {
-      return;
-    }
+    if (this.podeGerenciar(entrega, usuario)) return;
 
     throw new ForbiddenException(
       `Somente a ONG responsável pelo ponto de coleta pode ${acao} esta entrega`,
     );
+  }
+
+  private podeGerenciar(entrega: EntregaCompleta, usuario: UsuarioAutenticado) {
+    return usuario.papel === PapelUsuario.ADMIN ||
+      (usuario.papel === PapelUsuario.MEMBRO_ONG && entrega.pontoColeta?.criadoPor === usuario.id);
   }
 }

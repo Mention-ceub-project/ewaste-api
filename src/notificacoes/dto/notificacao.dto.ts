@@ -2,6 +2,7 @@ import { Notificacao } from '@prisma/client';
 
 export type NotificacaoDto = {
   id: string;
+  entregaId: string | null;
   titulo: string;
   mensagem: string;
   lida: boolean;
@@ -13,6 +14,7 @@ export function paraNotificacaoDto(
 ): NotificacaoDto {
   return {
     id: notificacao.id,
+    entregaId: notificacao.entregaId,
     titulo: notificacao.titulo,
     mensagem: notificacao.mensagem,
     lida: notificacao.lida,

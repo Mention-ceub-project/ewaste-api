@@ -14,6 +14,7 @@ export type EntregaCompleta = Entrega & {
   materiais: (EntregaMaterial & { material: Material })[];
   pontoColeta: PontoColeta | null;
   endereco: Endereco | null;
+  confirmador: { nomeCompleto: string } | null;
   usuario: {
     id: string;
     nomeCompleto: string;
@@ -48,12 +49,14 @@ export type AtualizarStatusData = {
   status: StatusEntrega;
   confirmadoPor?: string | null;
   confirmadoEm?: Date | null;
+  observacaoConfirmacao?: string | null;
   motivoRecusa?: string;
 };
 
 export type ConfirmarEntregaData = {
   confirmadoPor: string;
   confirmadoEm: Date;
+  observacaoConfirmacao: string | null;
   credito: CreditarPontosData;
   notificacao: CriarNotificacaoData;
 };
@@ -63,6 +66,8 @@ export type ListarEntregasFiltros = {
   pontosColetaIds?: string[];
   status?: StatusEntrega;
   tipoEntrega?: TipoEntrega;
+  dataInicial?: Date;
+  dataFinal?: Date;
   pagina: number;
   porPagina: number;
 };
