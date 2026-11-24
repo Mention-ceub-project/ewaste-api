@@ -46,6 +46,12 @@ export class PontosColetaController {
     return this.pontosService.listar(dto, usuario);
   }
 
+  @Get('minhas-metricas')
+  @Roles(PapelUsuario.MEMBRO_ONG)
+  minhasMetricas(@CurrentUser() usuario: UsuarioAutenticado) {
+    return this.pontosService.obterMetricasDaOng(usuario.id);
+  }
+
   @Get(':id')
   buscarPorId(
     @Param('id', ParseUUIDPipe) id: string,

@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { PapelUsuario } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import {
   UsuarioComGamificacao,
@@ -39,7 +40,7 @@ export class AuthService {
       email: dto.email,
       senhaHash,
       telefone: dto.telefone,
-      papel: dto.papel,
+      papel: PapelUsuario.DESCARTADOR,
     });
 
     return this.montarResposta(usuario);

@@ -50,9 +50,6 @@ export class PrismaPontosColetaRepository implements PontosColetaRepository {
       estado: filtros.estado
         ? { equals: filtros.estado, mode: 'insensitive' }
         : undefined,
-      materiaisAceitos: filtros.materialId
-        ? { some: { materialId: filtros.materialId } }
-        : undefined,
       ...(filtros.busca
         ? {
             OR: [
@@ -63,6 +60,15 @@ export class PrismaPontosColetaRepository implements PontosColetaRepository {
           }
         : {}),
     };
+
+    if (filtros.materialId) {
+      where.AND = [{
+        OR: [
+          { materiaisAceitos: { some: { materialId: filtros.materialId } } },
+          { materiaisAceitos: { none: {} } },
+        ],
+      }];
+    }
 
     return this.prisma.pontoColeta.findMany({
       where,
@@ -75,9 +81,19 @@ export class PrismaPontosColetaRepository implements PontosColetaRepository {
     id: string,
     dados: AtualizarPontoColetaData,
   ): Promise<PontoColetaCompleto> {
+    const { materiaisIds, ...campos } = dados;
     return this.prisma.pontoColeta.update({
       where: { id },
-      data: dados,
+      data: {
+        ...campos,
+        materiaisAceitos: materiaisIds && {
+          deleteMany: { materialId: { notIn: materiaisIds } },
+          createMany: {
+            data: materiaisIds.map((materialId) => ({ materialId })),
+            skipDuplicates: true,
+          },
+        },
+      },
       include: incluirMateriais,
     });
   }
@@ -86,49 +102,52 @@ export class PrismaPontosColetaRepository implements PontosColetaRepository {
     pontoId: string,
     materiaisIds: string[],
   ): Promise<PontoColetaCompleto> {
-    // Troca atomica: limpa a lista atual e regrava a nova
-    const [, , ponto] = await this.prisma.$transaction([
-      this.prisma.pontoMaterial.deleteMany({ where: { pontoId } }),
-      this.prisma.pontoMaterial.createMany({
-        data: materiaisIds.map((materialId) => ({ pontoId, materialId })),
-        skipDuplicates: true,
-      }),
-      this.prisma.pontoColeta.findUniqueOrThrow({
-        where: { id: pontoId },
-        include: incluirMateriais,
-      }),
-    ]);
-
-    return ponto;
+    return this.atualizar(pontoId, { materiaisIds });
   }
 
-  async obterMetricas(pontoId: string): Promise<MetricasPonto> {
-    const [total, pendentes, coletadas, impacto, peso] = await Promise.all([
-      this.prisma.entrega.count({ where: { pontoColetaId: pontoId } }),
-      this.prisma.entrega.count({
-        where: { pontoColetaId: pontoId, status: StatusEntrega.PENDENTE },
-      }),
-      this.prisma.entrega.count({
-        where: { pontoColetaId: pontoId, status: StatusEntrega.COLETADO },
-      }),
-      this.prisma.entrega.aggregate({
-        where: { pontoColetaId: pontoId, status: StatusEntrega.COLETADO },
-        _sum: { co2Evitado: true },
-      }),
-      this.prisma.entregaMaterial.aggregate({
-        where: {
-          entrega: { pontoColetaId: pontoId, status: StatusEntrega.COLETADO },
-        },
-        _sum: { pesoKg: true },
-      }),
-    ]);
+  obterMetricas(pontoId: string): Promise<MetricasPonto> {
+    return this.agregarMetricas({ pontoColetaId: pontoId });
+  }
+
+  obterMetricasPorCriador(usuarioId: string): Promise<MetricasPonto> {
+    return this.agregarMetricas({ pontoColeta: { criadoPor: usuarioId } });
+  }
+
+  private async agregarMetricas(
+    where: Prisma.EntregaWhereInput,
+  ): Promise<MetricasPonto> {
+    const agruparEntregas = this.prisma.entrega.groupBy({
+      by: ['status'],
+      where,
+      _count: { _all: true },
+      _sum: { co2Evitado: true },
+    });
+    const [porStatus, peso] = await this.prisma.$transaction(
+      [
+        agruparEntregas,
+        this.prisma.entregaMaterial.aggregate({
+          where: { entrega: { ...where, status: StatusEntrega.COLETADO } },
+          _sum: { pesoKg: true },
+        }),
+      ],
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+    const pendentes = porStatus.find(
+      ({ status }) => status === StatusEntrega.PENDENTE,
+    );
+    const coletadas = porStatus.find(
+      ({ status }) => status === StatusEntrega.COLETADO,
+    );
 
     return {
-      totalEntregas: total,
-      entregasPendentes: pendentes,
-      entregasColetadas: coletadas,
+      totalEntregas: porStatus.reduce(
+        (total, grupo) => total + grupo._count._all,
+        0,
+      ),
+      entregasPendentes: pendentes?._count._all ?? 0,
+      entregasColetadas: coletadas?._count._all ?? 0,
       pesoTotalKg: paraNumero(peso._sum.pesoKg),
-      co2EvitadoKg: paraNumero(impacto._sum.co2Evitado),
+      co2EvitadoKg: paraNumero(coletadas?._sum.co2Evitado ?? null),
     };
   }
 }

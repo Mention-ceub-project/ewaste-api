@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import {
   CreditarPontosData,
   GamificacaoRepository,
@@ -70,12 +71,19 @@ export class GamificacaoService {
   }
 
   // Chamado pelas entregas quando a ONG confirma a coleta
-  async creditarPontos(dados: CreditarPontosData) {
-    const estado = await this.gamificacao.creditarPontos(dados);
+  async creditarPontos(
+    dados: CreditarPontosData,
+    transacao?: Prisma.TransactionClient,
+  ) {
+    const estado = await this.gamificacao.creditarPontos(dados, transacao);
 
     const nivelCalculado = calcularNivel(estado.pontosTotais);
     if (nivelCalculado !== estado.nivel) {
-      return this.gamificacao.atualizarNivel(dados.usuarioId, nivelCalculado);
+      return this.gamificacao.atualizarNivel(
+        dados.usuarioId,
+        nivelCalculado,
+        transacao,
+      );
     }
 
     return estado;

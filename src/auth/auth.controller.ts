@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { UsuariosService } from '../usuarios/usuarios.service';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -19,6 +20,7 @@ export class AuthController {
   ) {}
 
   @Post('register')
+  @UseGuards(ThrottlerGuard)
   registrar(
     @Body(new ZodValidationPipe(registrarSchema)) dto: RegistrarDto,
   ) {
@@ -27,6 +29,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(200)
+  @UseGuards(ThrottlerGuard)
   login(@Body(new ZodValidationPipe(loginSchema)) dto: LoginDto) {
     return this.authService.login(dto);
   }

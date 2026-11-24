@@ -22,7 +22,6 @@ export const criarPontoColetaSchema = z.object({
 });
 
 export const atualizarPontoColetaSchema = criarPontoColetaSchema
-  .omit({ materiaisIds: true })
   .partial()
   .extend({ ativo: z.boolean().optional() });
 

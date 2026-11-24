@@ -100,6 +100,7 @@ export class PontosColetaService {
   ): Promise<PontoColetaDto> {
     const ponto = await this.buscarOuFalhar(id);
     this.garantirPermissao(ponto, usuario);
+    await this.validarMateriais(dto.materiaisIds);
 
     return paraPontoColetaDto(await this.pontos.atualizar(id, dto));
   }
@@ -134,6 +135,10 @@ export class PontosColetaService {
     this.garantirPermissao(ponto, usuario);
 
     return this.pontos.obterMetricas(id);
+  }
+
+  obterMetricasDaOng(usuarioId: string) {
+    return this.pontos.obterMetricasPorCriador(usuarioId);
   }
 
   // Usado pelas entregas: o ponto precisa estar ativo e aceitar os materiais

@@ -1,4 +1,4 @@
-import { GamificacaoUsuario, HistoricoPontos } from '@prisma/client';
+import { GamificacaoUsuario, HistoricoPontos, Prisma } from '@prisma/client';
 
 export type CreditarPontosData = {
   usuarioId: string;
@@ -27,10 +27,12 @@ export abstract class GamificacaoRepository {
   // Credita os pontos e grava o extrato na mesma transacao
   abstract creditarPontos(
     dados: CreditarPontosData,
+    transacao?: Prisma.TransactionClient,
   ): Promise<GamificacaoUsuario>;
   abstract atualizarNivel(
     usuarioId: string,
     nivel: number,
+    transacao?: Prisma.TransactionClient,
   ): Promise<GamificacaoUsuario>;
   abstract listarHistorico(
     filtros: ListarHistoricoFiltros,

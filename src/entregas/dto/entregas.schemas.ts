@@ -48,10 +48,27 @@ export const listarEntregasSchema = z.object({
   porPagina: z.coerce.number().int().positive().max(100).default(20),
 });
 
+const dataDaFila = z.string().datetime({ offset: true }).transform((texto) => new Date(texto)).optional();
+
+export const listarFilaEntregasSchema = listarEntregasSchema.extend({
+  pontoColetaId: z.string().uuid().optional(),
+  dataInicial: dataDaFila,
+  dataFinal: dataDaFila,
+}).refine(
+  ({ dataInicial, dataFinal }) => !dataInicial || !dataFinal || dataInicial <= dataFinal,
+  { message: 'A data inicial deve ser igual ou anterior à data final', path: ['dataInicial'] },
+);
+
 export const confirmarEntregaSchema = z.object({
   observacao: z.string().max(500).optional(),
 });
 
+export const recusarEntregaSchema = z.object({
+  motivo: z.string().trim().min(1, 'Informe o motivo da recusa').max(500),
+});
+
 export type CriarEntregaDto = z.infer<typeof criarEntregaSchema>;
 export type ListarEntregasDto = z.infer<typeof listarEntregasSchema>;
+export type ListarFilaEntregasDto = z.infer<typeof listarFilaEntregasSchema>;
 export type ConfirmarEntregaDto = z.infer<typeof confirmarEntregaSchema>;
+export type RecusarEntregaDto = z.infer<typeof recusarEntregaSchema>;

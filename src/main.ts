@@ -4,9 +4,13 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Libera o acesso do app React Native (de outra origem/IP)
+  const origensPermitidas = (process.env.CORS_ORIGINS ?? '')
+    .split(',')
+    .map((origem) => origem.trim())
+    .filter(Boolean);
+
   app.enableCors({
-    origin: true, // reflete a origem que chamou (ok para desenvolvimento)
+    origin: process.env.NODE_ENV === 'development' ? true : origensPermitidas,
     credentials: true,
   });
 

@@ -24,7 +24,7 @@ export type CriarPontoColetaData = {
 };
 
 export type AtualizarPontoColetaData = Partial<
-  Omit<CriarPontoColetaData, 'criadoPor' | 'materiaisIds'>
+  Omit<CriarPontoColetaData, 'criadoPor'>
 > & { ativo?: boolean };
 
 export type ListarPontosFiltros = {
@@ -59,4 +59,5 @@ export abstract class PontosColetaRepository {
     materiaisIds: string[],
   ): Promise<PontoColetaCompleto>;
   abstract obterMetricas(pontoId: string): Promise<MetricasPonto>;
+  abstract obterMetricasPorCriador(usuarioId: string): Promise<MetricasPonto>;
 }
